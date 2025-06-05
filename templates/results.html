@@ -1,0 +1,825 @@
+{% extends "base.html" %}
+
+{% block title %}검색 결과 - 나라장터 입찰공고 검색{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <!-- 검색 정보 헤더 -->
+    <div class="row mb-4">
+        <div class="col-12">            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2 class="mb-1">
+                        <i class="bi bi-search me-2"></i>검색 결과
+                    </h2>
+                    <div class="text-muted">
+                        검색 ID: <code>{{ search_id }}</code>
+                    </div>
+                </div>
+                <div class="text-end">
+                    <button class="btn btn-outline-secondary me-2" onclick="window.location.href='/'">
+                        <i class="bi bi-arrow-left me-1"></i>새 검색
+                    </button>
+                    <button class="btn btn-success" id="downloadAllBtn" disabled>
+                        <i class="bi bi-download me-1"></i>전체 다운로드
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 검색 상태 및 통계 -->
+    <div class="row mb-4" id="searchStats" style="display: none;">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body text-center">
+                    <i class="bi bi-file-text display-4"></i>
+                    <h4 id="totalBidsCount">0</h4>
+                    <small>총 검색된 공고</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body text-center">
+                    <i class="bi bi-check-circle display-4"></i>
+                    <h4 id="matchedBidsCount">0</h4>
+                    <small>키워드 발견 공고</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white">
+                <div class="card-body text-center">
+                    <i class="bi bi-paperclip display-4"></i>
+                    <h4 id="attachmentsCount">0</h4>
+                    <small>분석된 첨부파일</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-white">
+                <div class="card-body text-center">
+                    <i class="bi bi-clock display-4"></i>
+                    <h4 id="searchDuration">0</h4>
+                    <small>검색 소요시간(초)</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 검색 진행 상황 -->
+    <div class="row mb-4" id="searchProgress">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="bi bi-hourglass-split me-2"></i>검색 진행 중...
+                    </h5>
+                    <div class="progress mb-3" style="height: 20px;">
+                        <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" 
+                             role="progressbar" style="width: 0%">
+                            <span id="progressText">0%</span>
+                        </div>
+                    </div>
+                    <div class="row text-center">
+                        <div class="col-md-3">
+                            <strong id="processedCount">0</strong>
+                            <div class="text-muted small">처리된 공고</div>
+                        </div>
+                        <div class="col-md-3">
+                            <strong id="totalCount">0</strong>
+                            <div class="text-muted small">전체 공고</div>
+                        </div>
+                        <div class="col-md-6">
+                            <strong id="currentStep">대기 중...</strong>
+                            <div class="text-muted small" id="currentBid">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 필터 및 정렬 -->
+    <div class="row mb-3" id="filterSection" style="display: none;">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-3">
+                            <label class="form-label">정렬 기준</label>
+                            <select class="form-select" id="sortBy">
+                                <option value="date">공고일시순</option>
+                                <option value="name">공고명순</option>
+                                <option value="agency">기관명순</option>
+                                <option value="matches">키워드 매칭수순</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">정렬 방향</label>
+                            <select class="form-select" id="sortOrder">
+                                <option value="desc">내림차순</option>
+                                <option value="asc">오름차순</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">검색</label>
+                            <input type="text" class="form-control" id="filterKeyword" 
+                                   placeholder="공고명, 기관명으로 필터링">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">&nbsp;</label>
+                            <button class="btn btn-outline-primary d-block w-100" onclick="applyFilters()">
+                                <i class="bi bi-funnel"></i> 적용
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>    <!-- 검색 결과 목록 -->
+    <div class="row" id="resultsContainer">
+        <div class="col-12">
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">검색 중...</span>
+                </div>
+                <div class="mt-3">검색 결과를 불러오는 중입니다...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 검색 결과 테이블 -->
+    <div class="row" id="resultsTableContainer" style="display: none;">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead class="table-primary">
+                                <tr>
+                                    <th style="width: 25%;">공고명</th>
+                                    <th style="width: 10%;">마감일자</th>
+                                    <th style="width: 15%;">기초금액</th>
+                                    <th style="width: 15%;">발주처</th>
+                                    <th style="width: 10%;">담당자</th>
+                                    <th style="width: 10%;">연락처</th>
+                                    <th style="width: 10%;">이메일</th>
+                                    <th style="width: 5%;">상세보기</th>
+                                </tr>
+                            </thead>
+                            <tbody id="resultsTableBody">
+                                <!-- 검색 결과가 여기에 표시됩니다 -->
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- 검색 결과가 없을 때 -->
+                    <div id="noResultsMessage" class="text-center py-5" style="display: none;">
+                        <i class="bi bi-search display-1 text-muted"></i>
+                        <h4 class="mt-3">검색 결과가 없습니다</h4>
+                        <p class="text-muted">다른 키워드나 날짜 범위로 다시 검색해보세요.</p>
+                        <button class="btn btn-primary" onclick="window.location.href='/'">
+                            새 검색하기
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 페이지네이션 -->
+    <div class="row mt-4" id="paginationSection" style="display: none;">
+        <div class="col-12">
+            <nav aria-label="검색 결과 페이지네이션">
+                <ul class="pagination justify-content-center" id="pagination">
+                    <!-- 페이지네이션 버튼들이 여기에 동적으로 생성됩니다 -->
+                </ul>
+            </nav>
+        </div>
+    </div>
+</div>
+
+<!-- 파일 다운로드 Modal -->
+<div class="modal fade" id="downloadModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-download me-2"></i>파일 다운로드
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="downloadProgress">
+                    <div class="text-center py-3">
+                        <div class="spinner-border text-primary" role="status"></div>
+                        <div class="mt-2">파일을 준비하는 중입니다...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 상세 보기 Modal -->
+<div class="modal fade" id="detailModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-info-circle me-2"></i>공고 상세 정보
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="detailModalBody">
+                <!-- 상세 정보가 여기에 표시됩니다 -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+                <button type="button" class="btn btn-success" id="downloadBidJsonBtn">
+                    <i class="bi bi-filetype-json me-1"></i>JSON 다운로드
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 첨부파일 Modal -->
+<div class="modal fade" id="attachmentModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-paperclip me-2"></i>첨부파일 목록
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="attachmentModalBody">
+                <!-- 첨부파일 목록이 여기에 표시됩니다 -->
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let currentSearchId = '{{ search_id }}';
+let currentResults = [];
+let currentPage = 1;
+let resultsPerPage = 10;
+let currentBidDetail = null; // 현재 선택된 공고 상세 정보
+
+// 페이지 로드 시 검색 상태 확인 시작
+document.addEventListener('DOMContentLoaded', function() {
+    startStatusCheck();
+});
+
+// 검색 상태 확인 시작
+function startStatusCheck() {
+    // 먼저 간편 검색 결과가 있는지 확인
+    checkIfSimpleSearch().then(isSimple => {
+        if (isSimple) {
+            // 간편 검색인 경우 바로 결과 로드
+            document.getElementById('searchProgress').style.display = 'none';
+            loadSearchResults();
+        } else {
+            // 전체 검색인 경우 상태 확인 진행
+            const interval = setInterval(async function() {
+                try {
+                    const response = await fetch(`/api/search/status/${currentSearchId}`);
+                    const statusData = await response.json();
+                    
+                    updateProgressDisplay(statusData.progress);
+                    
+                    if (statusData.is_complete) {
+                        clearInterval(interval);
+                        document.getElementById('searchProgress').style.display = 'none';
+                        
+                        if (statusData.results_available) {
+                            await loadSearchResults();
+                        } else {
+                            showNoResults();
+                        }
+                    }
+                } catch (error) {
+                    console.error('상태 확인 오류:', error);
+                    clearInterval(interval);
+                    showError('검색 상태를 확인하는 중 오류가 발생했습니다.');
+                }
+            }, 2000); // 2초마다 확인
+        }
+    });
+}
+
+// 빠른 검색인지 확인
+async function checkIfSimpleSearch() {
+    try {
+        // 먼저 빠른 검색 결과 확인
+        const response = await fetch(`/api/search/quick-results/${currentSearchId}`);
+        return response.ok;
+    } catch (error) {
+        // 실패하면 기존 간편 검색 확인
+        try {
+            const fallbackResponse = await fetch(`/api/search/simple-results/${currentSearchId}`);
+            return fallbackResponse.ok;
+        } catch (fallbackError) {
+            return false;
+        }
+    }
+}
+
+// 진행상황 업데이트
+function updateProgressDisplay(progress) {
+    const progressPercent = Math.round(progress.progress_percent || 0);
+    
+    document.getElementById('progressBar').style.width = progressPercent + '%';
+    document.getElementById('progressText').textContent = progressPercent + '%';
+    document.getElementById('processedCount').textContent = progress.processed_bids || 0;
+    document.getElementById('totalCount').textContent = progress.total_bids || 0;
+    document.getElementById('currentStep').textContent = progress.current_step || '대기 중...';
+    document.getElementById('currentBid').textContent = progress.current_bid || '-';
+}
+
+// 검색 결과 로드
+async function loadSearchResults() {
+    try {
+        const response = await fetch(`/api/search/results/${currentSearchId}?page=${currentPage}&limit=${resultsPerPage}`);
+        const data = await response.json();
+        
+        currentResults = data.results;
+        displayResults(data);
+        updateStatistics(data);
+        
+        document.getElementById('filterSection').style.display = 'block';
+        document.getElementById('downloadAllBtn').disabled = false;
+        
+    } catch (error) {
+        console.error('결과 로드 오류:', error);        // 빠른 검색 결과인 경우 다른 엔드포인트 시도
+        try {
+            const quickResponse = await fetch(`/api/search/quick-results/${currentSearchId}`);
+            const quickData = await quickResponse.json();
+            
+            if (quickData.success) {
+                currentResults = quickData.results;
+                displayResults(quickData);
+                updateStatistics(quickData);
+                
+                document.getElementById('filterSection').style.display = 'block';
+                document.getElementById('downloadAllBtn').disabled = false;
+                return; // 성공하면 여기서 종료
+            }
+        } catch (quickError) {
+            console.log('빠른 검색 결과 시도 실패, 간편 검색 시도...');
+        }
+        
+        // 빠른 검색 실패시 간편 검색 결과 시도
+        try {
+            const simpleResponse = await fetch(`/api/search/simple-results/${currentSearchId}`);
+            const simpleData = await simpleResponse.json();
+            
+            if (simpleData.success) {
+                currentResults = simpleData.results;
+                displayResults(simpleData);
+                updateStatistics(simpleData);
+                
+                document.getElementById('filterSection').style.display = 'block';
+                document.getElementById('downloadAllBtn').disabled = false;
+            } else {
+                throw new Error('간편 검색 결과도 로드할 수 없습니다');
+            }
+        } catch (secondError) {
+            console.error('간편 검색 결과 로드도 실패:', secondError);
+            showError('검색 결과를 불러오는 중 오류가 발생했습니다.');
+        }
+    }
+}
+
+// 검색 결과 표시
+function displayResults(data) {
+    const resultsContainer = document.getElementById('resultsContainer');
+    const tableContainer = document.getElementById('resultsTableContainer');
+    const tableBody = document.getElementById('resultsTableBody');
+    const noResultsMessage = document.getElementById('noResultsMessage');
+    
+    // 로딩 중 표시 제거
+    resultsContainer.style.display = 'none';
+    
+    // 결과가 없는 경우
+    if (!data.results || data.results.length === 0) {
+        tableContainer.style.display = 'none';
+        noResultsMessage.style.display = 'block';
+        return;
+    }
+    
+    // 결과 테이블 행 생성
+    const tableRows = data.results.map((result, index) => {
+        const originalData = result.original_data || {};
+        
+        // 첨부파일 개수
+        const attachmentCount = result.attachments ? result.attachments.length : 0;
+        
+        // 담당자 정보
+        const contactPerson = originalData.ntceInsttOfclNm || '-';
+        const contactPhone = originalData.ntceInsttOfclTelNo || '-';
+        const contactEmail = originalData.ntceInsttOfclEmailAdrs || '-';
+        
+        return `
+            <tr>
+                <td>
+                    <div class="fw-bold text-primary" style="cursor: pointer;" onclick="showBidDetail('${originalData.bidNtceNo}', '${currentSearchId}')">
+                        ${originalData.bidNtceNm || '제목 없음'}
+                    </div>
+                    <div class="text-muted small">
+                        공고번호: ${originalData.bidNtceNo || '-'}
+                    </div>
+                    ${attachmentCount > 0 ? `
+                        <div class="mt-1">
+                            <span class="badge bg-success me-1">${attachmentCount}개 파일</span>
+                            <button class="btn btn-sm btn-outline-primary" onclick="showAttachmentList('${originalData.bidNtceNo}', '${currentSearchId}')">
+                                <i class="bi bi-paperclip"></i> 첨부파일
+                            </button>
+                        </div>
+                    ` : ''}
+                </td>
+                <td>
+                    <div class="fw-bold">${formatDate(originalData.opengDt)}</div>
+                    <div class="text-muted small">개찰일</div>
+                </td>
+                <td>
+                    <div class="fw-bold">${originalData.presmptPrce ? formatPrice(originalData.presmptPrce) : '-'}</div>
+                    <div class="text-muted small">기초금액</div>
+                </td>
+                <td>
+                    <div class="fw-bold">${originalData.ntceInsttNm || '-'}</div>
+                    <div class="text-muted small">발주기관</div>
+                </td>
+                <td>${contactPerson}</td>
+                <td>${contactPhone}</td>
+                <td>${contactEmail}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-info" onclick="showBidDetail('${originalData.bidNtceNo}', '${currentSearchId}')">
+                        <i class="bi bi-info-circle"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+    
+    tableBody.innerHTML = tableRows;
+    tableContainer.style.display = 'block';
+    noResultsMessage.style.display = 'none';
+    
+    // 페이지네이션 업데이트
+    updatePagination(data.total_count);
+}
+
+// 통계 업데이트
+function updateStatistics(data) {
+    document.getElementById('totalBidsCount').textContent = data.total_found || 0;
+    document.getElementById('matchedBidsCount').textContent = data.results?.length || 0;
+    
+    const totalAttachments = data.results?.reduce((sum, result) => {
+        return sum + Object.keys(result.attachments || {}).length;
+    }, 0) || 0;
+    document.getElementById('attachmentsCount').textContent = totalAttachments;
+    
+    document.getElementById('searchStats').style.display = 'block';
+}
+
+// 날짜 포맷팅
+function formatDate(dateStr) {
+    if (!dateStr) return '-';
+    try {
+        return new Date(dateStr).toLocaleDateString('ko-KR');
+    } catch {
+        return dateStr;
+    }
+}
+
+// 가격 포맷팅  
+function formatPrice(priceStr) {
+    if (!priceStr || priceStr === '0') return '-';
+    try {
+        const price = parseInt(priceStr);
+        return price.toLocaleString('ko-KR') + '원';
+    } catch {
+        return priceStr;
+    }
+}
+
+// 파일 다운로드
+async function downloadFile(type, filename) {
+    try {
+        const url = `/api/download/${type}/${encodeURIComponent(filename)}`;
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        showToast('파일 다운로드를 시작했습니다.', 'success');
+    } catch (error) {
+        console.error('다운로드 오류:', error);
+        showToast('파일 다운로드 중 오류가 발생했습니다.', 'error');
+    }
+}
+
+// JSON 파일 다운로드
+function downloadBidJson(bidNo) {
+    downloadFile('json', `${bidNo}.json`);
+}
+
+// 전체 다운로드
+async function downloadAllResults() {
+    try {
+        document.getElementById('downloadAllBtn').disabled = true;
+        showToast('전체 파일을 준비하는 중입니다...', 'info');
+        
+        const url = `/api/download/search-results/${currentSearchId}`;
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `search_results_${currentSearchId}.zip`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        showToast('전체 다운로드를 시작했습니다.', 'success');
+    } catch (error) {
+        console.error('전체 다운로드 오류:', error);
+        showToast('전체 다운로드 중 오류가 발생했습니다.', 'error');
+    } finally {
+        document.getElementById('downloadAllBtn').disabled = false;
+    }
+}
+
+// 페이지네이션 업데이트
+function updatePagination(totalResults) {
+    const totalPages = Math.ceil(totalResults / resultsPerPage);
+    
+    if (totalPages <= 1) {
+        document.getElementById('paginationSection').style.display = 'none';
+        return;
+    }
+    
+    const pagination = document.getElementById('pagination');
+    let html = '';
+    
+    // 이전 버튼
+    html += `
+        <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+            <a class="page-link" href="#" onclick="changePage(${currentPage - 1})">이전</a>
+        </li>
+    `;
+    
+    // 페이지 번호들
+    const startPage = Math.max(1, currentPage - 2);
+    const endPage = Math.min(totalPages, currentPage + 2);
+    
+    for (let i = startPage; i <= endPage; i++) {
+        html += `
+            <li class="page-item ${i === currentPage ? 'active' : ''}">
+                <a class="page-link" href="#" onclick="changePage(${i})">${i}</a>
+            </li>
+        `;
+    }
+    
+    // 다음 버튼
+    html += `
+        <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+            <a class="page-link" href="#" onclick="changePage(${currentPage + 1})">다음</a>
+        </li>
+    `;
+    
+    pagination.innerHTML = html;
+    document.getElementById('paginationSection').style.display = 'block';
+}
+
+// 페이지 변경
+function changePage(page) {
+    if (page < 1) return;
+    currentPage = page;
+    loadSearchResults();
+}
+
+// 전체 다운로드 버튼 이벤트
+document.getElementById('downloadAllBtn').addEventListener('click', downloadAllResults);
+
+// 상세 보기 모달 표시
+function displayDetailModal(item) {
+    const modalBody = document.getElementById('detailModalBody');
+    if (!modalBody) return;
+    
+    const originalData = item.original_data || {};
+    currentBidDetail = originalData; // 현재 상세 정보 저장
+    
+    // 첨부파일 목록
+    const attachments = item.attachments || [];
+    
+    let attachmentHtml = '';
+    if (attachments.length > 0) {
+        attachmentHtml = `
+            <div class="list-group mt-3">
+                ${attachments.map(att => `
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <i class="bi bi-file-earmark-text text-primary me-2"></i>
+                            ${att.filename}
+                        </div>
+                        <div>
+                            ${att.downloaded ? `
+                                <button class="btn btn-sm btn-success" onclick="openLocalFile('${att.local_path}')">
+                                    <i class="bi bi-file-earmark"></i> 열기
+                                </button>
+                            ` : `
+                                <a href="${att.url}" class="btn btn-sm btn-primary" target="_blank">
+                                    <i class="bi bi-download"></i> 다운로드
+                                </a>
+                            `}
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    } else {
+        attachmentHtml = '<div class="alert alert-info mt-3">첨부파일이 없습니다.</div>';
+    }
+    
+    // 표 형태로 상세 정보 표시
+    modalBody.innerHTML = `
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover">
+                <tbody>
+                    <tr>
+                        <th width="150" class="table-light">공고번호</th>
+                        <td>${originalData.bidNtceNo || '-'}</td>
+                        <th width="150" class="table-light">공고구분</th>
+                        <td>${originalData.ntceKindNm || '-'}</td>
+                    </tr>
+                    <tr>
+                        <th class="table-light">공고명</th>
+                        <td colspan="3" class="fw-bold">${originalData.bidNtceNm || '-'}</td>
+                    </tr>
+                    <tr>
+                        <th class="table-light">발주기관</th>
+                        <td>${originalData.ntceInsttNm || '-'}</td>
+                        <th class="table-light">수요기관</th>
+                        <td>${originalData.dminsttNm || '-'}</td>
+                    </tr>
+                    <tr>
+                        <th class="table-light">공고일시</th>
+                        <td>${formatDate(originalData.bidNtceDt)}</td>
+                        <th class="table-light">마감일시</th>
+                        <td>${formatDate(originalData.bidClseDt)}</td>
+                    </tr>
+                    <tr>
+                        <th class="table-light">개찰일시</th>
+                        <td>${formatDate(originalData.opengDt)}</td>
+                        <th class="table-light">입찰방법</th>
+                        <td>${originalData.bidMethdNm || '-'}</td>
+                    </tr>
+                    <tr>
+                        <th class="table-light">계약방법</th>
+                        <td>${originalData.cntrctCnclsMthdNm || '-'}</td>
+                        <th class="table-light">재입찰허용여부</th>
+                        <td>${originalData.rbidPermsnYn === 'Y' ? '허용' : '불허'}</td>
+                    </tr>
+                    <tr>
+                        <th class="table-light">기초금액</th>
+                        <td class="fw-bold text-success">${formatPrice(originalData.presmptPrce)}</td>
+                        <th class="table-light">배정예산액</th>
+                        <td class="fw-bold text-primary">${formatPrice(originalData.asignBdgtAmt)}</td>
+                    </tr>
+                    <tr>
+                        <th class="table-light">담당자</th>
+                        <td>${originalData.ntceInsttOfclNm || '-'}</td>
+                        <th class="table-light">연락처</th>
+                        <td>${originalData.ntceInsttOfclTelNo || '-'}</td>
+                    </tr>
+                    <tr>
+                        <th class="table-light">이메일</th>
+                        <td colspan="3">${originalData.ntceInsttOfclEmailAdrs || '-'}</td>
+                    </tr>
+                    <tr>
+                        <th class="table-light">납품기한</th>
+                        <td>${originalData.dlvrTmlmtDt || originalData.dlvrDaynum + '일' || '-'}</td>
+                        <th class="table-light">납품조건</th>
+                        <td>${originalData.dlvryCndtnNm || '-'}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <h5 class="mt-4 mb-3">
+            <i class="bi bi-paperclip me-2"></i>첨부파일
+        </h5>
+        ${attachmentHtml}
+    `;
+    
+    // 모달 표시
+    const modal = new bootstrap.Modal(document.getElementById('detailModal'));
+    modal.show();
+    
+    // JSON 다운로드 버튼 이벤트 연결
+    document.getElementById('downloadBidJsonBtn').onclick = function() {
+        downloadBidJson(originalData.bidNtceNo);
+    };
+}
+
+// 첨부파일 모달 표시
+function displayAttachmentModal(item) {
+    const modalBody = document.getElementById('attachmentModalBody');
+    if (!modalBody) return;
+    
+    const originalData = item.original_data || {};
+    const attachments = item.attachments || [];
+    
+    if (attachments.length === 0) {
+        modalBody.innerHTML = '<div class="alert alert-info">첨부파일이 없습니다.</div>';
+        return;
+    }
+    
+    modalBody.innerHTML = `
+        <h5 class="mb-3">${originalData.bidNtceNm || '공고'} 첨부파일</h5>
+        <div class="list-group">
+            ${attachments.map(att => `
+                <div class="list-group-item">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <i class="bi bi-file-earmark-text text-primary me-2"></i>
+                            <strong>${att.filename}</strong>
+                        </div>
+                        <div>
+                            ${att.downloaded ? `
+                                <button class="btn btn-success btn-sm" onclick="openLocalFile('${att.local_path}')">
+                                    <i class="bi bi-file-earmark"></i> 열기
+                                </button>
+                            ` : `
+                                <a href="${att.url}" class="btn btn-primary btn-sm" target="_blank">
+                                    <i class="bi bi-download"></i> 다운로드
+                                </a>
+                            `}
+                        </div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+    
+    // 모달 표시
+    const modal = new bootstrap.Modal(document.getElementById('attachmentModal'));
+    modal.show();
+}
+
+// 토스트 메시지 표시
+function showToast(message, type = 'info') {
+    // 간단한 알림 - 더 나은 토스트 라이브러리를 사용할 수도 있습니다
+    const alertClass = type === 'success' ? 'alert-success' : 
+                      type === 'error' ? 'alert-danger' : 'alert-info';
+    
+    const toast = document.createElement('div');
+    toast.className = `alert ${alertClass} position-fixed top-0 end-0 m-3`;
+    toast.style.zIndex = '9999';
+    toast.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" onclick="this.parentElement.remove()"></button>
+    `;
+    
+    document.body.appendChild(toast);
+    
+    // 3초 후 자동 제거
+    setTimeout(() => {
+        if (toast.parentElement) {
+            toast.remove();
+        }
+    }, 3000);
+}
+
+// 결과 없음 표시
+function showNoResults() {
+    const container = document.getElementById('resultsContainer');
+    const tableContainer = document.getElementById('resultsTableContainer');
+    
+    container.style.display = 'none';
+    tableContainer.style.display = 'block';
+    
+    const noResultsMessage = document.getElementById('noResultsMessage');
+    noResultsMessage.style.display = 'block';
+}
+
+// 오류 표시
+function showError(message) {
+    const container = document.getElementById('resultsContainer');
+    container.innerHTML = `
+        <div class="col-12">
+            <div class="alert alert-danger">
+                <i class="bi bi-exclamation-triangle me-2"></i>
+                ${message}
+            </div>
+        </div>
+    `;
+}
+</script>
+{% endblock %}
